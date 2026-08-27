@@ -1,0 +1,38 @@
+# Data Engineering Docker Container for R development.
+# This is a modified version of the rocker/tidyverse image with additional packages for the Data Engineering Team. 
+
+# Copy and paste this to build the image: docker build -t de_image_r:1.0 .
+# Container mount: "/home/rstudio"
+
+# Use the rocker/tidyverse base image
+FROM rocker/tidyverse:4.4
+
+# Install system dependencies and SQL Server ODBC drivers
+RUN apt-get update \
+ && apt-get install --yes --no-install-recommends \
+        apt-transport-https \
+        curl \
+        gnupg \
+        unixodbc-dev \
+ && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+ && curl https://packages.microsoft.com/config/debian/9/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+ && apt-get update \
+ && ACCEPT_EULA=Y apt-get install --yes --no-install-recommends msodbcsql17 \
+ && install2.r odbc \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /tmp/*
+
+# Install RODBC and odbc packages, and other listed packages in R
+RUN R -e "install.packages(c('RODBC', 'odbc', 'tm', 'shinydashboard', 'openxlsx', 'shinyjs', 'reactable', 'shinyWidgets', 'shinythemes', 'shinyBS', 'shinycssloaders', 'writexl', 'urltools', 'fresh', 'DT', 'kableExtra', 'plotly', 'markdown', 'shinyalert', 'packrat', 'rsconnect', 'formattable'), repos='http://cran.rstudio.com/')"
+
+# Clean up
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# username: rstudio
+# docker run -d \
+#   -p 8787:8787 \
+#   --name de_r_container \
+#   -e PASSWORD=password \
+#   -v /home/philliphungerford/REPOSITORIES/:/home/rstudio \
+#   de_image_r:1.0
