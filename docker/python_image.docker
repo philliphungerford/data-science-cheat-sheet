@@ -1,0 +1,87 @@
+# Combined ML + Dash Docker Container for local development.
+#
+# Build:
+# docker build --no-cache -t epath_dev:1.0 .
+#
+# Run ML / Jupyter:
+# docker run -d \
+#   --gpus all \
+#   -p 8888:8888 \
+#   -p 8050:8050 \
+#   --name epath_ml_container \
+#   --user root \
+#   -e JUPYTER_TOKEN=password \
+#   -e GRANT_SUDO=yes \
+#   -v /home/philliphungerford/REPOSITORIES/:/home/jovyan/work \
+#   epath_dev:1.0
+
+# Go back to the original base image that had SQL working
+FROM jupyter/minimal-notebook:latest
+
+USER root
+
+# Original SQL Server ODBC install block that worked
+RUN apt-get update \
+ && apt-get install --yes --no-install-recommends \
+        apt-transport-https \
+        curl \
+        gnupg \
+        unixodbc-dev \
+ && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+ && curl https://packages.microsoft.com/config/debian/9/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+ && apt-get update \
+ && ACCEPT_EULA=Y apt-get install --yes --no-install-recommends msodbcsql17 \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /tmp/*
+
+USER ${NB_USER}
+
+WORKDIR /home/jovyan/work
+
+# Avoid generating the config because the base image may already have one
+RUN mkdir -p "${HOME}/.jupyter" \
+ && echo "c.ContentsManager.allow_hidden = True" >> "${HOME}/.jupyter/jupyter_server_config.py"
+
+# Install ML + Dash project dependencies only
+RUN pip install --no-cache-dir \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org \
+    "huggingface-hub>=0.35" \
+    "transformers>=4.55,<5" \
+    "datasets>=4.0" \
+    "trl>=0.20" \
+    "peft>=0.17" \
+    "accelerate>=1.10" \
+    "bitsandbytes>=0.47" \
+    "scikit-learn>=1.7" \
+    "pandas>=2.3" \
+    "pyodbc>=5.2" \
+    "python-dotenv>=1.2.2" \
+    "rich>=14" \
+    "tabulate>=0.9" \
+    "dash>=2.18" \
+    "dash-ag-grid>=31.3" \
+    "dash-bootstrap-components>=1.7" \
+    "plotly>=6.0" \
+    "sqlalchemy>=2.0" \
+    "ipython" \
+    "pytest"
+
+# GPU PyTorch version
+RUN pip install --no-cache-dir torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu128
+
+# Verify Python version, ODBC driver, pyodbc, torch, TRL, Dash
+RUN python --version \
+ && python -c "import sys; assert (3, 11) <= sys.version_info < (3, 13), sys.version" \
+ && odbcinst -q -d -n "ODBC Driver 17 for SQL Server" \
+ && python -c "import pyodbc; print(pyodbc.drivers())" \
+ && python -c "import torch; print('torch:', torch.__version__)" \
+ && python -c "from trl import SFTTrainer; print('TRL import OK')" \
+ && python -c "import dash, pandas, sqlalchemy; print('Dash imports OK')"
+
+EXPOSE 8888
+EXPOSE 8050
+
+CMD ["start-notebook.sh"]
